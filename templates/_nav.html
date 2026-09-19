@@ -1,0 +1,11 @@
+<nav class="nav-bar">
+  <a href="/">Ana Sayfa</a> ~*~ <a href="/guestbook">Misafir Defteri</a> ~*~ <a href="/about">Hakkımda</a>
+</nav>
+
+<form method="post" action="/toggle-era" class="era-toggle-form">
+  {% if era == '2030' %}
+    <button type="submit" class="era-toggle-button">📼 1996'YA DON</button>
+  {% else %}
+    <button type="submit" class="era-toggle-button">⚡ 2030'A ISINLAN</button>
+  {% endif %}
+</form>

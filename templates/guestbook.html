@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <title>~*~ Misafir Defteri ~*~</title>
+  {% if era == '2030' %}
+    <link rel="stylesheet" href="/static/css/future.css">
+  {% else %}
+    <link rel="stylesheet" href="/static/css/retro.css">
+  {% endif %}
+</head>
+<body>
+  <div class="page">
+    {% if era == '2030' %}
+      <div class="neon-frame">⚡ NÖRAL BAĞLANTI AKTİF ⚡ 2030 ZAMAN HATTI ⚡</div>
+      <h1 class="glitch-title">~*~ Misafir Defteri ~*~</h1>
+    {% else %}
+      <h1 class="blink-title">~*~ Misafir Defteri ~*~</h1>
+    {% endif %}
+
+    {% include "_nav.html" %}
+
+    <p>Bize bir not birak!</p>
+
+    <form method="post" action="/guestbook" class="guestbook-form">
+      <label>Isim: <input type="text" name="name" required></label>
+      <label>Mesaj: <textarea name="message" rows="3" required></textarea></label>
+      <button type="submit">DEFTERE YAZ</button>
+    </form>
+
+    <hr class="dashed">
+
+    <div class="guestbook-entries">
+      {% for entry in entries %}
+        <div class="guestbook-entry">
+          <strong>{{ entry.name }}</strong> <span class="entry-date">({{ entry.timestamp }})</span>
+          <p>{{ entry.message }}</p>
+        </div>
+      {% else %}
+        <p>Henuz kimse yazmamis. Ilk sen ol!</p>
+      {% endfor %}
+    </div>
+  </div>
+</body>
+</html>

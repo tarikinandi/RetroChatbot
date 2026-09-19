@@ -1,0 +1,177 @@
+body {
+  background-color: #000080;
+  background-image: repeating-radial-gradient(circle, #000080 0, #000080 10px, #0000a0 10px, #0000a0 20px);
+  color: #00ff00;
+  font-family: "Comic Sans MS", cursive, sans-serif;
+  margin: 0;
+  padding: 20px;
+}
+
+.page {
+  max-width: 700px;
+  margin: 0 auto;
+  background-color: #000000;
+  border: 4px double #ff00ff;
+  padding: 16px;
+}
+
+.top-marquee {
+  background-color: #ffff00;
+  color: #ff0000;
+  font-weight: bold;
+  padding: 4px;
+  margin-bottom: 12px;
+}
+
+.blink-title {
+  text-align: center;
+  color: #ffff00;
+  text-shadow: 2px 2px #ff00ff;
+  animation: blink 1s steps(1) infinite;
+}
+
+@keyframes blink {
+  50% { opacity: 0.3; }
+}
+
+.nav-bar {
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+.nav-bar a {
+  color: #00ffff;
+}
+
+.badges {
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+.badge {
+  display: inline-block;
+  background-color: #ffffff;
+  color: #000000;
+  font-size: 11px;
+  padding: 3px 6px;
+  margin: 2px;
+  border: 1px solid #000000;
+  font-family: Arial, sans-serif;
+}
+
+.chat-window {
+  background-color: #001100;
+  border: 2px inset #00ff00;
+  height: 250px;
+  overflow-y: auto;
+  padding: 8px;
+  font-family: "Courier New", monospace;
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.chat-line {
+  margin-bottom: 4px;
+}
+
+.chat-label {
+  font-weight: bold;
+  margin-right: 4px;
+}
+
+.chat-user .chat-label {
+  color: #00ffff;
+}
+
+.chat-model .chat-label {
+  color: #ffff00;
+}
+
+.chat-text {
+  color: #ffffff;
+}
+
+.chat-form {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.chat-form input {
+  flex: 1;
+  font-family: "Courier New", monospace;
+  padding: 4px;
+}
+
+.chat-form button,
+.guestbook-form button {
+  background-color: #c0c0c0;
+  border: 2px outset #ffffff;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.dashed {
+  border: none;
+  border-top: 3px dashed #ff00ff;
+  margin: 12px 0;
+}
+
+.counter-line {
+  text-align: center;
+}
+
+.counter {
+  background-color: #000000;
+  color: #00ff00;
+  font-family: "Courier New", monospace;
+  padding: 2px 6px;
+  border: 1px solid #00ff00;
+}
+
+.footer-note {
+  text-align: center;
+  font-size: 11px;
+  color: #cccccc;
+}
+
+.guestbook-form label {
+  display: block;
+  margin-bottom: 8px;
+  color: #ffffff;
+}
+
+.guestbook-form textarea {
+  width: 100%;
+  font-family: inherit;
+}
+
+.guestbook-entries {
+  color: #ffffff;
+}
+
+.guestbook-entry {
+  border-bottom: 1px dashed #ff00ff;
+  padding: 6px 0;
+}
+
+.entry-date {
+  font-size: 11px;
+  color: #cccccc;
+}
+
+.era-toggle-form {
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+.era-toggle-button {
+  background-color: #ffff00;
+  border: 3px outset #ff00ff;
+  color: #ff0000;
+  font-weight: bold;
+  font-family: "Comic Sans MS", cursive;
+  padding: 6px 14px;
+  cursor: pointer;
+  font-size: 13px;
+}

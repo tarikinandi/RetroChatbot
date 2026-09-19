@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <title>~*~ Zaman Makinesi Sohbet Botu ~*~</title>
+  {% if era == '2030' %}
+    <link rel="stylesheet" href="/static/css/future.css">
+  {% else %}
+    <link rel="stylesheet" href="/static/css/retro.css">
+  {% endif %}
+</head>
+<body>
+  <div class="page">
+    {% if era == '2030' %}
+      <div class="neon-frame">⚡ NÖRAL BAĞLANTI AKTİF ⚡ 2030 ZAMAN HATTI ⚡</div>
+      <h1 class="glitch-title">~*~ Zaman Makinesi Sohbet Botu ~*~</h1>
+    {% else %}
+      <marquee behavior="scroll" direction="left" class="top-marquee">
+        &#9733;&#9734;&#9733; ZAMAN MAKINESI'NE HOSGELDINIZ &#9733;&#9734;&#9733; 1996'DAN CANLI YAYIN &#9733;&#9734;&#9733;
+      </marquee>
+
+      <h1 class="blink-title">~*~ Zaman Makinesi Sohbet Botu ~*~</h1>
+    {% endif %}
+
+    {% include "_nav.html" %}
+
+    {% if era == '2030' %}
+      <div class="badges">
+        <span class="badge">Kuantum Sunucuda Barındırılır</span>
+        <span class="badge">Nöral Arayüz Uyumlu</span>
+      </div>
+
+      <div class="holo-stage" id="hologram-canvas">
+        <div class="holo-caption-box">
+          <div class="holo-caption-tag">◤ HOLOGRAM AGENT ONLINE ◢</div>
+          <div class="holo-caption-line" id="holo-caption-text">Nöral akış başlatılıyor...</div>
+        </div>
+      </div>
+    {% else %}
+      <div class="badges">
+        <span class="badge">Best Viewed 800x600</span>
+        <span class="badge">Under Construction</span>
+        <span class="badge">Netscape Navigator ile en iyi gorunum</span>
+      </div>
+    {% endif %}
+
+    <div class="chat-window" id="chat-window">
+      {% for msg in history %}
+        <div class="chat-line chat-{{ msg.role }}">
+          <span class="chat-label">{% if msg.role == 'user' %}SEN&gt;{% else %}BOT&gt;{% endif %}</span>
+          <span class="chat-text">{{ msg.text }}</span>
+        </div>
+      {% endfor %}
+    </div>
+
+    <form id="chat-form" class="chat-form">
+      <input type="text" id="chat-input" name="message" placeholder="Mesajini yaz..." autocomplete="off" required>
+      <button type="submit">GONDER</button>
+    </form>
+
+    <hr class="dashed">
+
+    <p class="counter-line">Ziyaretci sayisi: <span class="counter">{{ "%06d"|format(counter) }}</span></p>
+
+    {% if era == '2030' %}
+      <p class="footer-note">Bu sayfa son olarak 2030'da senkronize edildi. webmaster@zamanmakinesi.chat</p>
+    {% else %}
+      <p class="footer-note">Bu sayfa en son 1996'da guncellendi. webmaster@zamanmakinesi.chat</p>
+    {% endif %}
+  </div>
+
+  <script src="/static/js/chat.js"></script>
+
+  {% if era == '2030' %}
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+    <script src="/static/js/hologram.js"></script>
+  {% endif %}
+</body>
+</html>

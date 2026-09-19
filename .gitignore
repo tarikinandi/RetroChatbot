@@ -1,0 +1,22 @@
+# Python / venv
+.venv/
+__pycache__/
+*.pyc
+
+# Secrets / local config
+.env
+
+# Runtime data (chat history, guestbook, counter, era state)
+data/*.json
+
+# Claude Code / superpowers tooling artifacts (not part of the app)
+.claude/
+.superpowers/
+docs/superpowers/
+monitoring/
+
+# IDE
+.idea/
+
+# Scratch/test files
+hello.py

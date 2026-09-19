@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <title>~*~ Hakkımda ~*~</title>
+  {% if era == '2030' %}
+    <link rel="stylesheet" href="/static/css/future.css">
+  {% else %}
+    <link rel="stylesheet" href="/static/css/retro.css">
+  {% endif %}
+</head>
+<body>
+  <div class="page">
+    {% if era == '2030' %}
+      <div class="neon-frame">⚡ NÖRAL BAĞLANTI AKTİF ⚡ 2030 ZAMAN HATTI ⚡</div>
+      <h1 class="glitch-title">~*~ Hakkımda ~*~</h1>
+    {% else %}
+      <h1 class="blink-title">~*~ Hakkımda ~*~</h1>
+    {% endif %}
+
+    {% include "_nav.html" %}
+
+    {% if era == '2030' %}
+      <p>Merhaba, ben bu sitenin webmaster'ıyım. 2030'da nörotech alanında
+      çalışıyorum; holografik arayüzler ve kuantum ağlar üzerine projeler
+      geliştiriyorum. Zaman Makinesi'ni, hem eski dial-up günlerine hem de
+      bugünün nöral bağlantı çağına aynı anda ışınlanabilen bir deney
+      olarak kurdum.</p>
+      <p>Boş zamanlarımda holografik projeksiyon donanımlarıyla uğraşıyor,
+      1990'lar internetinin arşivlerini nöral bulutumda saklıyorum.</p>
+    {% else %}
+      <p>Merhaba, ben bu sitenin webmaster'iyim! Evdeki 486'mda HTML
+      ogrenmeye basladim, gecelerimi BBS'lere baglanip mesaj panolarinda
+      geziniyorum. 14.4k modemim biraz yavas ama idare ediyor.</p>
+      <p>Bu sayfayi Netscape Navigator 2.0 ile test ettim, umarim sizde de
+      guzel gorunuyordur. Zaman Makinesi projesini, gelecekte internetin
+      nasil olacagini merak ettigim icin kurdum.</p>
+    {% endif %}
+
+    <hr class="dashed">
+
+    <p class="footer-note">webmaster@zamanmakinesi.chat</p>
+  </div>
+</body>
+</html>
