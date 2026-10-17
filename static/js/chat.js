@@ -83,9 +83,21 @@ document.addEventListener("DOMContentLoaded", function () {
     input.value = "";
     input.disabled = true;
 
+    // Server budget is ~28 s (maxDuration 30 s); give up a little after that.
+    const controller = new AbortController();
+    const abortTimer = setTimeout(function () {
+      controller.abort();
+    }, 35000);
+    const typing = document.createElement("div");
+    typing.className = "chat-line chat-model chat-typing";
+    typing.textContent = "BOT> ...";
+    chatWindow.appendChild(typing);
+    chatWindow.scrollTop = chatWindow.scrollHeight;
+
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
+        signal: controller.signal,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
           isDemo ? { message: message, history: sent, era: era } : { message: message }
@@ -110,6 +122,8 @@ document.addEventListener("DOMContentLoaded", function () {
     } catch (err) {
       appendLine("model", "⚠ BAGLANTI KOPTU ⚠ Modeminizi kontrol edip tekrar deneyin...");
     } finally {
+      clearTimeout(abortTimer);
+      typing.remove();
       input.disabled = false;
       input.focus();
     }

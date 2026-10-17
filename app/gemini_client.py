@@ -61,8 +61,12 @@ def _get_client() -> genai.Client:
     return genai.Client(api_key=settings.api_key)
 
 
-DEMO_DEADLINE_SECONDS = 8.0
-DEMO_MIN_ATTEMPT_SECONDS = 1.0
+DEMO_DEADLINE_SECONDS = 28.0  # vercel.json maxDuration is 30 s
+# Google rejects X-Server-Timeout < 10 s with 400 INVALID_ARGUMENT, and the SDK
+# derives that header from http_options.timeout (ms), so never go below this.
+DEMO_MIN_ATTEMPT_SECONDS = 10.0
+DEMO_FIRST_ATTEMPT_SECONDS = 12.0
+DEMO_MAX_ATTEMPTS = 2  # slow attempts per request; instant 404s do not count
 COOLDOWN_UNUSABLE_SECONDS = 600.0  # 404 / "not found": model name not accepted
 COOLDOWN_QUOTA_SECONDS = 60.0  # 429
 DISCOVERY_CACHE_SECONDS = 600.0
@@ -221,7 +225,7 @@ def _final_code(kinds: list[str]) -> str:
 
 
 def _generate_reply_demo(history: list[dict], user_message: str, era: str) -> str:
-    """Ordered model fallback inside one ~8 s deadline (Vercel Hobby limit)."""
+    """Ordered model fallback inside one ~28 s deadline (maxDuration 30 s)."""
     persona = PERSONA_2030 if era == "2030" else PERSONA_1996
     kinds: list[str] = []
     try:
@@ -232,20 +236,30 @@ def _generate_reply_demo(history: list[dict], user_message: str, era: str) -> st
         queue = _candidates(configured)
         discovered = False
         tried = 0
+        counted = 0
         while True:
             remaining = DEMO_DEADLINE_SECONDS - (time.monotonic() - start)
             if not queue:
                 if discovered or not _all_unusable(configured, kinds):
                     break
                 discovered = True
-                if remaining < DEMO_MIN_ATTEMPT_SECONDS:
+                if (
+                    remaining < DEMO_MIN_ATTEMPT_SECONDS
+                    or counted >= DEMO_MAX_ATTEMPTS
+                ):
                     break
                 queue = _discover_models(client, set(configured))
                 continue
-            if tried and remaining < DEMO_MIN_ATTEMPT_SECONDS:
+            if tried and (
+                remaining < DEMO_MIN_ATTEMPT_SECONDS or counted >= DEMO_MAX_ATTEMPTS
+            ):
                 break
             model = queue.pop(0)
-            share = remaining / min(len(queue) + 1, 2)
+            if tried:
+                attempt_seconds = remaining
+            else:
+                attempt_seconds = min(DEMO_FIRST_ATTEMPT_SECONDS, remaining)
+            attempt_seconds = max(attempt_seconds, DEMO_MIN_ATTEMPT_SECONDS)
             tried += 1
             try:
                 response = client.models.generate_content(
@@ -254,7 +268,7 @@ def _generate_reply_demo(history: list[dict], user_message: str, era: str) -> st
                     config=types.GenerateContentConfig(
                         system_instruction=persona,
                         http_options=types.HttpOptions(
-                            timeout=int(max(share, 0.5) * 1000),
+                            timeout=int(attempt_seconds * 1000),
                             retry_options=types.HttpRetryOptions(attempts=1),
                         ),
                     ),
@@ -272,12 +286,15 @@ def _generate_reply_demo(history: list[dict], user_message: str, era: str) -> st
                     raise GeminiRequestError("invalid", code="request_invalid") from None
                 kinds.append(kind)
                 _mark_failed(model, kind)
+                if kind != "unusable":
+                    counted += 1
                 continue
             if response.text:
                 _last_good[:] = [model]
                 return response.text
             logger.warning("Gemini bos cevap dondurdu")
             kinds.append("transient")
+            counted += 1
     except GeminiRequestError:
         raise
     except Exception as exc:

@@ -92,9 +92,13 @@ def test_quota_429_moves_to_next_model(demo):
 
 
 def test_5xx_and_timeout_move_to_next_model(demo):
-    m = demo(RoutedModels({"m1": ApiErr(503, "UNAVAILABLE"), "m2": TimeoutError(), "m3": "ok"}))
+    m = demo(RoutedModels({"m1": ApiErr(503, "UNAVAILABLE"), "m2": "ok"}))
     assert reply() == "ok"
-    assert m.calls == ["m1", "m2", "m3"]
+    assert m.calls == ["m1", "m2"]
+    m = demo(RoutedModels({"m1": TimeoutError(), "m2": "ok"}))
+    gemini_client.reset_model_state()
+    assert reply() == "ok"
+    assert m.calls == ["m1", "m2"]
 
 
 @pytest.mark.parametrize("code,status", [(401, "UNAUTHENTICATED"), (403, "PERMISSION_DENIED")])
@@ -225,12 +229,51 @@ def test_deadline_respected_with_fake_clock(demo):
     assert demo.clock[0] - start == 10.0
 
 
-def test_attempt_timeout_is_a_share_of_remaining(demo):
-    m = demo(RoutedModels({"m1": ApiErr(503), "m2": ApiErr(503), "m3": "ok"}))
+def test_attempt_timeouts_never_below_10s(demo):
+    m = demo(RoutedModels({"m1": ApiErr(503), "m2": "ok"}, clock=demo.clock, cost=3.0))
     reply()
-    limit = gemini_client.DEMO_DEADLINE_SECONDS * 1000
-    assert all(0 < t <= limit for t in m.timeouts)
-    assert m.timeouts[0] < limit
+    assert all(t >= 10000 for t in m.timeouts)
+    assert m.timeouts[0] == 12000
+    assert m.timeouts[1] == 25000  # 28 s budget minus 3 s spent
+
+
+def test_no_attempt_starts_with_less_than_10s_left(demo):
+    m = demo(RoutedModels({"m1": TimeoutError(), "m2": "ok"},
+                          clock=demo.clock, cost=19.0))
+    with pytest.raises(gemini_client.GeminiRequestError) as info:
+        reply()
+    assert m.calls == ["m1"]  # 9 s left: second attempt must not start
+    assert info.value.code == "timeout"
+
+
+def test_at_most_two_slow_attempts(demo):
+    m = demo(RoutedModels({"m1": ApiErr(503), "m2": ApiErr(503), "m3": "ok"}))
+    with pytest.raises(gemini_client.GeminiRequestError):
+        reply()
+    assert m.calls == ["m1", "m2"]
+
+
+def test_sdk_sends_server_timeout_header_of_at_least_10s(demo, monkeypatch):
+    """Real SDK object, stubbed transport: the final header must be >= 10."""
+    import httpx
+    from google import genai
+
+    seen = []
+
+    def handler(request):
+        seen.append(request.headers.get("x-server-timeout"))
+        return httpx.Response(200, json={"candidates": [{"content": {
+            "role": "model", "parts": [{"text": "ok"}]}}]})
+
+    fake_key = "k" * 8 + "-" + "x" * 8  # built at runtime, not a real key
+    client = genai.Client(
+        api_key=fake_key,
+        http_options=genai.types.HttpOptions(
+            httpx_client=httpx.Client(transport=httpx.MockTransport(handler))),
+    )
+    monkeypatch.setattr(gemini_client, "_get_client", lambda: client)
+    assert reply() == "ok"
+    assert seen and all(h is not None and int(h) >= 10 for h in seen)
 
 
 def test_logs_have_class_and_code_only(demo, caplog):

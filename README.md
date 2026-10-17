@@ -43,7 +43,7 @@ Devre disi birakilanlar ve nedeni:
 - **Sohbet gecmisi**: sunucuda tutulmaz. Tarayici gecmisi `sessionStorage`'da saklar ve her istekte en fazla son 10 mesaji gonderir.
 - **Donem (1996/2030)**: istek bazli. Sayfa `?era=2030` ile (ve cerezle) secilir, sohbet istegi `era` alanini tasir; global durum yok.
 
-Korumalar: mesaj 1..500 karakter, en fazla 10 gecmis ogesi (rol `user`/`model`), kontrol karakterleri temizlenir (aksi halde 422); CORS yalnizca portfolyo adresi ve dev adresleri icin; Origin basligi izinli degilse 403; IP basina dakikada 5 istek ve gunluk toplam `DAILY_CAP` sinirlari (bellek ici, serverless'ta "best effort" - asil sinir Vercel Firewall kuralidir); model yedekleme zinciri (asagida), toplam ~8 sn zaman asimi; hatalarda istemciye genel mesaj, loglarda yalnizca istisna sinifi adi.
+Korumalar: mesaj 1..500 karakter, en fazla 10 gecmis ogesi (rol `user`/`model`), kontrol karakterleri temizlenir (aksi halde 422); CORS yalnizca portfolyo adresi ve dev adresleri icin; Origin basligi izinli degilse 403; IP basina dakikada 5 istek ve gunluk toplam `DAILY_CAP` sinirlari (bellek ici, serverless'ta "best effort" - asil sinir Vercel Firewall kuralidir); model yedekleme zinciri (asagida), toplam ~28 sn zaman asimi; hatalarda istemciye genel mesaj, loglarda yalnizca istisna sinifi adi.
 
 Ortam degiskenleri (Vercel > Settings > Environment Variables):
 
@@ -58,7 +58,7 @@ Ortam degiskenleri (Vercel > Settings > Environment Variables):
 
 ### Model yedekleme (demo)
 
-Her istek, toplam ~8 sn icinde modelleri sirayla dener; her deneme kalan surenin bir payini alir, sureyi asmaz.
+Her istek, toplam ~28 sn icinde (Vercel `maxDuration` 30 sn, `vercel.json`) en fazla 2 yavas deneme yapar; anlik 404 donenler sayilmaz. Ilk deneme 12 sn, ikincisi kalan sureyi alir. Kalan sure 10 sn'nin altindaysa yeni deneme baslatilmaz. Neden 10 sn: SDK `http_options.timeout` degerini `X-Server-Timeout` basligina cevirir ve Gemini 10 sn'den kisa degeri `400 INVALID_ARGUMENT` ile reddeder. Tarayici 35 sn sonra istegi keser.
 
 - Son basarili model bellekte tutulur ve sonraki istekte once o denenir.
 - Siradaki modele gecilen hatalar: 400 (gecersiz/desteklenmeyen model), 404, 429 (kota), 5xx/UNAVAILABLE, zaman asimi, bos cevap.
