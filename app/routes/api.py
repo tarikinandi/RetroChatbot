@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from pydantic import AfterValidator, BaseModel, Field
 
 from app import gemini_client, security, storage
-from app.config import DATA_DIR
+from app.config import DATA_DIR, get_models
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +25,20 @@ FALLBACK_ERROR_MESSAGE_2030 = (
     "⚠ NÖRAL BAĞLANTI KESİLDİ ⚠ Kuantum ağı senkronize ediliyor, "
     "birazdan tekrar deneyin..."
 )
+
+KEY_PROBLEM_MESSAGES = {
+    "1996": "⚠ ANAHTAR SORUNU ⚠ Santralin sifresi gecersiz, demo sahibi hatti duzeltene kadar sus...",
+    "2030": "⚠ ANAHTAR SORUNU ⚠ Hologram çekirdeğinin kimliği geçersiz, demo sahibi düzeltene kadar bekle...",
+}
+QUOTA_MESSAGES = {
+    "1996": "⚠ KOTA DOLDU ⚠ Santral simdilik dolu, birazdan tekrar dene...",
+    "2030": "⚠ KOTA DOLDU ⚠ Kuantum kanalı şimdilik tıkandı, birazdan tekrar dene...",
+}
+# error code -> (HTTP status, messages by era); anything else is the generic 502.
+ERROR_CODES = {
+    "key_problem": (503, KEY_PROBLEM_MESSAGES),
+    "quota": (429, QUOTA_MESSAGES),
+}
 
 RATE_LIMIT_MESSAGES = {
     "1996": "⚠ HAT MESGUL ⚠ Cok hizli yazdin, modem soguyana kadar bir dakika bekle...",
@@ -74,8 +88,11 @@ def require_allowed_origin(request: Request) -> None:
         raise HTTPException(status_code=403, detail="Origin not allowed")
 
 
-def _error(status: int, messages: dict, era: str) -> JSONResponse:
-    return JSONResponse({"reply": messages[era]}, status_code=status)
+def _error(status: int, messages: dict, era: str, code: str | None = None) -> JSONResponse:
+    body = {"reply": messages[era]}
+    if code:
+        body["error"] = code
+    return JSONResponse(body, status_code=status)
 
 
 def _post_chat_demo(request: Request, payload: ChatRequest):
@@ -95,9 +112,14 @@ def _post_chat_demo(request: Request, payload: ChatRequest):
     history = [item.model_dump() for item in payload.history]
     try:
         reply = gemini_client.generate_reply(history, payload.message, era)
-    except gemini_client.GeminiRequestError:
-        logger.error("Demo chat istegi Gemini hatasi nedeniyle basarisiz oldu")
-        return _error(502, {"1996": FALLBACK_ERROR_MESSAGE_1996, "2030": FALLBACK_ERROR_MESSAGE_2030}, era)
+    except gemini_client.GeminiRequestError as exc:
+        code = getattr(exc, "code", "model_unavailable")
+        logger.error("Demo chat istegi Gemini hatasi nedeniyle basarisiz oldu: %s", code)
+        status, messages = ERROR_CODES.get(
+            code,
+            (502, {"1996": FALLBACK_ERROR_MESSAGE_1996, "2030": FALLBACK_ERROR_MESSAGE_2030}),
+        )
+        return _error(status, messages, era, code)
     return ChatResponse(reply=reply)
 
 
@@ -126,3 +148,17 @@ def post_chat(request: Request, payload: ChatRequest):
 
     storage.append_chat_message(DATA_DIR, "model", reply)
     return ChatResponse(reply=reply)
+
+
+@router.get("/api/health")
+def get_health():
+    """Safe diagnostic: no secrets, no upstream error text, no Google calls."""
+    return JSONResponse(
+        {
+            "ok": True,
+            "demo": security.demo_mode(),
+            "configured": bool(os.environ.get("GEMINI_API_KEY")),
+            "models": get_models(),
+        },
+        headers={"Cache-Control": "no-store"},
+    )

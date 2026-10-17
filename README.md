@@ -22,7 +22,7 @@ pip install -r requirements-dev.txt
 
 ```
 GEMINI_API_KEY=senin-api-anahtarin
-GEMINI_MODEL=gemini-3.8-flash
+GEMINI_MODELS=gemini-2.5-flash,gemini-2.5-flash-lite,gemini-2.0-flash
 ```
 
 Ardından çalıştır:
@@ -43,17 +43,41 @@ Devre disi birakilanlar ve nedeni:
 - **Sohbet gecmisi**: sunucuda tutulmaz. Tarayici gecmisi `sessionStorage`'da saklar ve her istekte en fazla son 10 mesaji gonderir.
 - **Donem (1996/2030)**: istek bazli. Sayfa `?era=2030` ile (ve cerezle) secilir, sohbet istegi `era` alanini tasir; global durum yok.
 
-Korumalar: mesaj 1..500 karakter, en fazla 10 gecmis ogesi (rol `user`/`model`), kontrol karakterleri temizlenir (aksi halde 422); CORS yalnizca portfolyo adresi ve dev adresleri icin; Origin basligi izinli degilse 403; IP basina dakikada 5 istek ve gunluk toplam `DAILY_CAP` sinirlari (bellek ici, serverless'ta "best effort" - asil sinir Vercel Firewall kuralidir); tek model, en fazla bir yeniden deneme, toplam ~8 sn zaman asimi; hatalarda istemciye genel mesaj, loglarda yalnizca istisna sinifi adi.
+Korumalar: mesaj 1..500 karakter, en fazla 10 gecmis ogesi (rol `user`/`model`), kontrol karakterleri temizlenir (aksi halde 422); CORS yalnizca portfolyo adresi ve dev adresleri icin; Origin basligi izinli degilse 403; IP basina dakikada 5 istek ve gunluk toplam `DAILY_CAP` sinirlari (bellek ici, serverless'ta "best effort" - asil sinir Vercel Firewall kuralidir); model yedekleme zinciri (asagida), toplam ~8 sn zaman asimi; hatalarda istemciye genel mesaj, loglarda yalnizca istisna sinifi adi.
 
 Ortam degiskenleri (Vercel > Settings > Environment Variables):
 
 | Ad | Aciklama |
 |---|---|
 | `GEMINI_API_KEY` | **Gizli.** Yalnizca hosting ortaminda tutulur, koda/repoya yazilmaz. Yoksa `/api/chat` 503 doner ("demo henuz hazir degil"). |
-| `GEMINI_MODEL` | Kullanilacak tek model (varsayilan `gemini-3.8-flash`). |
+| `GEMINI_MODELS` | Virgulle ayrilmis, **sirali** model listesi. Bos birakilirsa: `gemini-2.5-flash,gemini-2.5-flash-lite,gemini-2.0-flash,gemini-flash-latest,gemini-flash-lite-latest` (`*-latest` Google'in kayan takma adlaridir). |
+| `GEMINI_MODEL` | Eski tek-model ayari; tanimliysa listenin **basina** eklenir. `GEMINI_MODELS` yoksa varsayilan liste arkasindan yedek olarak eklenir. |
 | `DEMO_MODE` | `1` = demo davranisi. `api/index.py` bunu varsayilan olarak acar. |
 | `DAILY_CAP` | Gunluk yumusak ust sinir (varsayilan 300). |
 | `ALLOWED_ORIGIN` | Izinli site (varsayilan `https://portfolio-mtinandi.vercel.app`). |
+
+### Model yedekleme (demo)
+
+Her istek, toplam ~8 sn icinde modelleri sirayla dener; her deneme kalan surenin bir payini alir, sureyi asmaz.
+
+- Son basarili model bellekte tutulur ve sonraki istekte once o denenir.
+- Siradaki modele gecilen hatalar: 400 (gecersiz/desteklenmeyen model), 404, 429 (kota), 5xx/UNAVAILABLE, zaman asimi, bos cevap.
+- 401/403 (veya "API key not valid/expired/leaked") **hemen** durdurur; baska model denenmez.
+- Bekleme (cooldown): 400/404 alan model 10 dk, 429 alan model 60 sn atlanir. Bellek ici, sicak sunucu ornegi basina; soguk baslangicta sifirlanir.
+- Kesif (son care): yapilandirilmis tum modeller 400/404 verirse `models.list()` bir kez cagrilir (10 dk onbellek); `generateContent` destekleyen ve adinda `flash` gecen modeller (`lite` sona; `image`, `tts`, `live`, `embedding`, `thinking-exp` haric) arasindan en fazla 2 tanesi kalan sure icinde denenir.
+
+Hata kodlari (`/api/chat` yanitinda `error` alani; `reply` her zaman donemin sesiyle yazilmis mesajdir):
+
+| `error` | HTTP | Anlami |
+|---|---|---|
+| `key_problem` | 503 | API anahtari gecersiz/suresi dolmus/sizdirilmis (veya yetkisiz). Loga yalnizca istisna sinifi ve durum kodu yazilir. |
+| `quota` | 429 | Tum denenen modellerde kota doldu. |
+| `model_unavailable` | 502 | Hicbir model cevap veremedi (400/404/5xx). |
+| `timeout` | 502 | Sure doldu. |
+
+Modeli kod degistirmeden degistirmek: Vercel > Settings > Environment Variables'ta `GEMINI_MODELS` degerini guncelle ve yeniden deploy et.
+
+Tanilama: `GET /api/health` -> `{"ok":true,"demo":true,"configured":true,"models":[...]}`. Anahtar, hata metni veya Google'dan model listesi icermez; `Cache-Control: no-store`.
 
 Yerelde demo modunu denemek icin:
 

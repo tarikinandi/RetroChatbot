@@ -135,3 +135,36 @@ def test_app_imports_without_key_in_demo(monkeypatch):
     monkeypatch.setattr(dotenv, "load_dotenv", lambda *a, **k: False)
     monkeypatch.delenv("GEMINI_API_KEY")
     importlib.reload(m)
+
+
+@pytest.mark.parametrize("code,status,era,needle", [
+    ("key_problem", 503, "1996", "ANAHTAR"),
+    ("key_problem", 503, "2030", "ANAHTAR"),
+    ("quota", 429, "1996", "KOTA"),
+    ("quota", 429, "2030", "KOTA"),
+    ("model_unavailable", 502, "1996", "BAGLANTI"),
+    ("timeout", 502, "2030", "BAĞLANTI"),
+])
+def test_error_codes_in_json_and_era_voice(monkeypatch, code, status, era, needle):
+    def fail(*a):
+        raise gemini_client.GeminiRequestError("x", code=code)
+    monkeypatch.setattr(gemini_client, "generate_reply", fail)
+    r = client.post("/api/chat", json={"message": "x", "era": era})
+    assert r.status_code == status
+    assert r.json()["error"] == code and needle in r.json()["reply"]
+
+
+def test_health_reports_config_without_secrets(monkeypatch):
+    monkeypatch.setenv("GEMINI_MODELS", "a,b")
+    monkeypatch.delenv("GEMINI_MODEL", raising=False)
+    r = client.get("/api/health")
+    assert r.status_code == 200
+    assert r.json() == {"ok": True, "demo": True, "configured": True, "models": ["a", "b"]}
+    assert "test-key" not in r.text
+    assert "no-store" in r.headers["cache-control"]
+    monkeypatch.delenv("GEMINI_API_KEY")
+    assert client.get("/api/health").json()["configured"] is False
+
+
+def test_health_is_get_only():
+    assert client.post("/api/health").status_code == 405
