@@ -5,6 +5,7 @@ from google import genai
 from google.genai import types
 
 from app.config import get_settings
+from app.security import demo_mode
 
 logger = logging.getLogger(__name__)
 
@@ -64,17 +65,65 @@ def _get_client() -> genai.Client:
     return genai.Client(api_key=settings.api_key)
 
 
+DEMO_DEADLINE_SECONDS = 8.0
+DEMO_MAX_ATTEMPTS = 2  # first try + at most one retry
+DEMO_MIN_ATTEMPT_SECONDS = 1.0
+
+
+def _build_contents(history: list[dict], user_message: str) -> list[dict]:
+    contents = [
+        {"role": msg["role"], "parts": [{"text": msg["text"]}]} for msg in history
+    ]
+    contents.append({"role": "user", "parts": [{"text": user_message}]})
+    return contents
+
+
+def _generate_reply_demo(history: list[dict], user_message: str, era: str) -> str:
+    """Single model, at most one retry, ~8 s total (Vercel Hobby function limit)."""
+    persona = PERSONA_2030 if era == "2030" else PERSONA_1996
+    try:
+        settings = get_settings()
+        contents = _build_contents(history, user_message)
+        client = _get_client()
+        start = time.monotonic()
+        for attempt in range(DEMO_MAX_ATTEMPTS):
+            remaining = DEMO_DEADLINE_SECONDS - (time.monotonic() - start)
+            if attempt > 0 and remaining < DEMO_MIN_ATTEMPT_SECONDS:
+                break
+            try:
+                response = client.models.generate_content(
+                    model=settings.model,
+                    contents=contents,
+                    config=types.GenerateContentConfig(
+                        system_instruction=persona,
+                        http_options=types.HttpOptions(
+                            timeout=int(max(remaining, 0.5) * 1000),
+                            retry_options=types.HttpRetryOptions(attempts=1),
+                        ),
+                    ),
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Gemini denemesi %d basarisiz: %s", attempt + 1, type(exc).__name__
+                )
+                continue
+            if response.text:
+                return response.text
+            logger.warning("Gemini bos cevap dondurdu (deneme %d)", attempt + 1)
+    except Exception as exc:
+        logger.error("Gemini hazirlik hatasi: %s", type(exc).__name__)
+    raise GeminiRequestError("demo request failed")
+
+
 def generate_reply(history: list[dict], user_message: str, era: str) -> str:
+    if demo_mode():
+        return _generate_reply_demo(history, user_message, era)
     persona = PERSONA_2030 if era == "2030" else PERSONA_1996
 
     try:
         settings = get_settings()
 
-        contents = [
-            {"role": msg["role"], "parts": [{"text": msg["text"]}]}
-            for msg in history
-        ]
-        contents.append({"role": "user", "parts": [{"text": user_message}]})
+        contents = _build_contents(history, user_message)
 
         client = _get_client()
 
@@ -105,7 +154,7 @@ def generate_reply(history: list[dict], user_message: str, era: str) -> str:
                     logger.warning(
                         "Model %s basarisiz oldu, siradaki model deneniyor: %s",
                         model_name,
-                        exc,
+                        type(exc).__name__,
                     )
                     last_exc = exc
                     continue
@@ -117,5 +166,8 @@ def generate_reply(history: list[dict], user_message: str, era: str) -> str:
 
         raise last_exc
     except Exception as exc:
-        logger.exception("Gemini API istegi basarisiz oldu (tum modeller denendi)")
-        raise GeminiRequestError(str(exc)) from exc
+        # Class name only: SDK exception text can echo request details.
+        logger.error(
+            "Gemini API istegi basarisiz oldu: %s", type(exc).__name__
+        )
+        raise GeminiRequestError(type(exc).__name__) from None

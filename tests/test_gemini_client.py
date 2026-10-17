@@ -156,3 +156,66 @@ def test_generate_reply_succeeds_on_second_retry_round(monkeypatch):
 
     assert reply == "ikinci turdan cevap"
     assert len(fake_models.calls) == models_per_round + 1
+
+
+# --- demo mode: one model, one retry, hard deadline, quiet logs ---
+
+class SeqModels:
+    def __init__(self, outcomes):
+        self.outcomes = list(outcomes)
+        self.calls = []
+
+    def generate_content(self, **kwargs):
+        self.calls.append(kwargs)
+        out = self.outcomes.pop(0)
+        if isinstance(out, Exception):
+            raise out
+        return FakeResponse(out)
+
+
+def test_demo_uses_single_model_and_one_retry(monkeypatch):
+    monkeypatch.setenv("DEMO_MODE", "1")
+    models = SeqModels([RuntimeError("a"), RuntimeError("b"), "never"])
+    monkeypatch.setattr(gemini_client, "_get_client", lambda: FakeClient(models))
+
+    with pytest.raises(gemini_client.GeminiRequestError):
+        gemini_client.generate_reply([], "hi", "1996")
+
+    assert len(models.calls) == 2
+    assert {c["model"] for c in models.calls} == {"gemini-3.8-flash"}
+
+
+def test_demo_retry_succeeds_and_sets_timeout(monkeypatch):
+    monkeypatch.setenv("DEMO_MODE", "1")
+    models = SeqModels([RuntimeError("a"), "ok"])
+    monkeypatch.setattr(gemini_client, "_get_client", lambda: FakeClient(models))
+
+    assert gemini_client.generate_reply([], "hi", "1996") == "ok"
+    timeout_ms = models.calls[0]["config"].http_options.timeout
+    assert 0 < timeout_ms <= 8000
+
+
+def test_demo_gives_up_when_deadline_passed(monkeypatch):
+    monkeypatch.setenv("DEMO_MODE", "1")
+    models = SeqModels([RuntimeError("a"), "ok"])
+    monkeypatch.setattr(gemini_client, "_get_client", lambda: FakeClient(models))
+    ticks = iter([0.0, 7.9, 100.0, 100.0])
+    monkeypatch.setattr(gemini_client.time, "monotonic", lambda: next(ticks))
+
+    with pytest.raises(gemini_client.GeminiRequestError):
+        gemini_client.generate_reply([], "hi", "1996")
+    assert len(models.calls) == 1
+
+
+def test_logs_do_not_contain_exception_text_or_user_text(monkeypatch, caplog):
+    secret = "SECRET-SDK-DETAIL"
+    for demo in ("1", ""):
+        monkeypatch.setenv("DEMO_MODE", demo)
+        models = SeqModels([RuntimeError(secret)] * 8)
+        monkeypatch.setattr(gemini_client, "_get_client", lambda: FakeClient(models))
+        with pytest.raises(gemini_client.GeminiRequestError) as info:
+            gemini_client.generate_reply([], "private-user-text", "1996")
+        assert secret not in str(info.value)
+    assert secret not in caplog.text
+    assert "private-user-text" not in caplog.text
+    assert "RuntimeError" in caplog.text
