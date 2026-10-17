@@ -68,19 +68,6 @@ def test_post_toggle_era_calls_toggle_era(monkeypatch):
     assert len(calls) == 1
 
 
-def test_post_toggle_era_redirects_to_referer(monkeypatch):
-    monkeypatch.setattr(storage, "toggle_era", lambda data_dir: "2030")
-
-    response = client.post(
-        "/toggle-era",
-        headers={"referer": "http://testserver/guestbook"},
-        follow_redirects=False,
-    )
-
-    assert response.status_code == 303
-    assert response.headers["location"] == "http://testserver/guestbook"
-
-
 def test_post_toggle_era_redirects_to_home_without_referer(monkeypatch):
     monkeypatch.setattr(storage, "toggle_era", lambda data_dir: "2030")
 
@@ -96,3 +83,15 @@ def test_get_about_returns_200(monkeypatch):
     response = client.get("/about")
 
     assert response.status_code == 200
+
+
+def test_toggle_era_never_redirects_to_external_referer(monkeypatch):
+    monkeypatch.setattr(storage, "toggle_era", lambda data_dir: "2030")
+
+    response = client.post(
+        "/toggle-era",
+        headers={"referer": "https://evil.example/phish"},
+        follow_redirects=False,
+    )
+
+    assert response.headers["location"] == "/"
