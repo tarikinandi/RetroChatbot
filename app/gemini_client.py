@@ -110,7 +110,7 @@ def _build_contents(history: list[dict], user_message: str) -> list[dict]:
     return [{"role": r, "parts": [{"text": t}]} for r, t in turns]
 
 
-_KEY_LIKE = re.compile(r"AIza[0-9A-Za-z_\-]{10,}|[A-Za-z0-9_\-]{32,}")
+_KEY_LIKE = re.compile(r"[A-Za-z0-9_-]{24,}")  # API keys and other long tokens
 
 
 def redact(text: str, limit: int = 160) -> str:

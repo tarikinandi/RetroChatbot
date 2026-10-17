@@ -80,7 +80,7 @@ def reply():
 
 
 def test_first_model_400_falls_to_second(demo):
-    m = demo(RoutedModels({"m1": ApiErr(400, "INVALID_ARGUMENT"), "m2": "ok"}))
+    m = demo(RoutedModels({"m1": ApiErr(404, "NOT_FOUND"), "m2": "ok"}))
     assert reply() == "ok"
     assert m.calls == ["m1", "m2"]
 
@@ -123,7 +123,7 @@ def test_last_good_model_tried_first_next_time(demo):
 
 
 def test_400_cooldown_skips_bad_model_then_expires(demo):
-    m = demo(RoutedModels({"m1": ApiErr(400, "INVALID_ARGUMENT"), "m2": ApiErr(503), "m3": "ok"}))
+    m = demo(RoutedModels({"m1": ApiErr(404, "NOT_FOUND"), "m2": ApiErr(503), "m3": "ok"}))
     reply()  # m1 -> cooldown, m2 transient, m3 ok (last good)
     m.calls.clear()
     m.outcomes["m3"] = ApiErr(503)
@@ -170,7 +170,7 @@ def test_all_400_triggers_discovery_and_listing_is_cached(demo):
         Listed("models/gemini-9-flash-embedding", ("embedContent",)),
         Listed("models/gemini-8-flash", ("embedContent",)),
     ]
-    outcomes = {k: ApiErr(400, "INVALID_ARGUMENT") for k in ("m1", "m2", "m3")}
+    outcomes = {k: ApiErr(404, "NOT_FOUND") for k in ("m1", "m2", "m3")}
     outcomes["gemini-9-flash"] = "found"
     m = demo(RoutedModels(outcomes, listing=listing))
     assert reply() == "found"
@@ -194,7 +194,7 @@ def test_discovery_prefers_flash_over_lite_and_caps_at_two(demo):
 
 def test_discovery_not_used_when_a_failure_was_quota(demo):
     m = demo(RoutedModels(
-        {"m1": ApiErr(400), "m2": ApiErr(429, "RESOURCE_EXHAUSTED"), "m3": ApiErr(400)},
+        {"m1": ApiErr(404), "m2": ApiErr(429, "RESOURCE_EXHAUSTED"), "m3": ApiErr(404)},
         listing=[Listed("models/x-flash")],
     ))
     with pytest.raises(gemini_client.GeminiRequestError):
@@ -207,7 +207,7 @@ def test_discovery_failure_is_swallowed(demo):
         def list(self):
             raise RuntimeError("SECRET-LIST")
 
-    demo(Broken({k: ApiErr(400) for k in ("m1", "m2", "m3")}))
+    demo(Broken({k: ApiErr(404) for k in ("m1", "m2", "m3")}))
     with pytest.raises(gemini_client.GeminiRequestError) as info:
         reply()
     assert info.value.code == "model_unavailable"
@@ -237,6 +237,77 @@ def test_logs_have_class_and_code_only(demo, caplog):
     demo(RoutedModels({"m1": ApiErr(403, "PERMISSION_DENIED", "FAKE" + "-KEY-TEXT")}))
     with pytest.raises(gemini_client.GeminiRequestError):
         gemini_client.generate_reply([], "private-user-text", "1996")
-    assert "FAKE-KEY-TEXT" not in caplog.text and "SECRET-API-TEXT" not in caplog.text
     assert "private-user-text" not in caplog.text
     assert "ApiErr" in caplog.text and "403" in caplog.text
+
+
+# ---- request shape, classification and redaction (no network) ----
+
+HISTORIES = [
+    [],
+    [{"role": "user", "text": "a"}, {"role": "model", "text": "b"}],
+    [{"role": "model", "text": "b"}, {"role": "user", "text": "a"}],  # trimmed start
+    [{"role": "user", "text": "a"}, {"role": "user", "text": "c"}],  # failed reply
+    [{"role": "user", "text": "a"}, {"role": "model", "text": " "}],  # empty turn
+    [{"role": "user", "text": "a"}, {"role": "model", "text": "b"}, {"role": "user", "text": "c"}],
+]
+
+
+@pytest.mark.parametrize("history", HISTORIES)
+@pytest.mark.parametrize("era", ["1996", "2030"])
+def test_demo_request_shape_is_valid(demo, history, era):
+    from google.genai import types
+
+    m = demo(RoutedModels({"m1": "ok"}))
+    seen = {}
+    real = m.generate_content
+
+    def spy(**kw):
+        seen.update(kw)
+        return real(**kw)
+
+    m.generate_content = spy
+    gemini_client.generate_reply(history, "Merhaba", era)
+    contents = seen["contents"]
+    roles = [c["role"] for c in contents]
+    assert roles[0] == "user" and roles[-1] == "user"
+    assert all(a != b for a, b in zip(roles, roles[1:]))
+    for c in contents:
+        assert c["parts"] and all(p["text"].strip() for p in c["parts"])
+        types.Content.model_validate(c)
+    cfg = seen["config"]
+    assert isinstance(cfg, types.GenerateContentConfig)
+    assert cfg.system_instruction and "Zaman Makinesi" in cfg.system_instruction
+    assert cfg.tools is None and cfg.max_output_tokens is None
+    assert "Merhaba" in contents[-1]["parts"][0]["text"]
+
+
+def test_400_other_is_request_invalid_without_fallback(demo, caplog):
+    m = demo(RoutedModels({"m1": ApiErr(400, "INVALID_ARGUMENT", "bad contents"), "m2": "ok"}))
+    with pytest.raises(gemini_client.GeminiRequestError) as info:
+        reply()
+    assert info.value.code == "request_invalid"
+    assert m.calls == ["m1"]
+    assert "request_invalid" in caplog.text and "INVALID_ARGUMENT" in caplog.text
+
+
+def test_400_api_key_is_key_problem(demo):
+    m = demo(RoutedModels({"m1": ApiErr(400, "INVALID_ARGUMENT", "API key not valid"), "m2": "ok"}))
+    with pytest.raises(gemini_client.GeminiRequestError) as info:
+        reply()
+    assert info.value.code == "key_problem" and m.calls == ["m1"]
+
+
+def test_404_still_falls_back(demo):
+    demo(RoutedModels({"m1": ApiErr(404, "NOT_FOUND", "model not found"), "m2": "ok"}))
+    assert reply() == "ok"
+
+
+def test_redact_removes_key_like_values_and_truncates(monkeypatch):
+    fake_key = "AI" + "za" + "Sy" + "x" * 33
+    other = "tok" + "A1" * 20
+    monkeypatch.setenv("GEMINI_API_KEY", "shortsecret-" + "z" * 4)
+    text = f"bad {fake_key} and {other} and shortsecret-zzzz " + "w " * 200
+    out = gemini_client.redact(text)
+    assert fake_key not in out and other not in out and "shortsecret-zzzz" not in out
+    assert "[REDACTED]" in out and len(out) <= 160

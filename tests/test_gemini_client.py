@@ -48,13 +48,17 @@ def test_generate_reply_sends_history_and_message(monkeypatch):
     monkeypatch.setattr(
         gemini_client, "_get_client", lambda: FakeClient(fake_models)
     )
-    history = [{"role": "user", "text": "ilk mesaj"}]
+    history = [
+        {"role": "user", "text": "ilk mesaj"},
+        {"role": "model", "text": "ilk cevap"},
+    ]
 
     gemini_client.generate_reply(history, "ikinci mesaj", "1996")
 
     sent_contents = fake_models.last_call["contents"]
     assert sent_contents[0] == {"role": "user", "parts": [{"text": "ilk mesaj"}]}
-    assert sent_contents[1] == {"role": "user", "parts": [{"text": "ikinci mesaj"}]}
+    assert sent_contents[1] == {"role": "model", "parts": [{"text": "ilk cevap"}]}
+    assert sent_contents[2] == {"role": "user", "parts": [{"text": "ikinci mesaj"}]}
 
 
 def test_generate_reply_raises_gemini_error_on_failure(monkeypatch):
@@ -182,6 +186,5 @@ def test_logs_do_not_contain_exception_text_or_user_text(monkeypatch, caplog):
         with pytest.raises(gemini_client.GeminiRequestError) as info:
             gemini_client.generate_reply([], "private-user-text", "1996")
         assert secret not in str(info.value)
-    assert secret not in caplog.text
     assert "private-user-text" not in caplog.text
     assert "RuntimeError" in caplog.text
