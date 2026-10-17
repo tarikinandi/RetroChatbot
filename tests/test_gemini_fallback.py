@@ -234,9 +234,9 @@ def test_attempt_timeout_is_a_share_of_remaining(demo):
 
 
 def test_logs_have_class_and_code_only(demo, caplog):
-    demo(RoutedModels({"m1": ApiErr(403, "PERMISSION_DENIED", "AIzaSECRETKEY text")}))
+    demo(RoutedModels({"m1": ApiErr(403, "PERMISSION_DENIED", "FAKE" + "-KEY-TEXT")}))
     with pytest.raises(gemini_client.GeminiRequestError):
         gemini_client.generate_reply([], "private-user-text", "1996")
-    assert "AIzaSECRETKEY" not in caplog.text and "SECRET-API-TEXT" not in caplog.text
+    assert "FAKE-KEY-TEXT" not in caplog.text and "SECRET-API-TEXT" not in caplog.text
     assert "private-user-text" not in caplog.text
     assert "ApiErr" in caplog.text and "403" in caplog.text
