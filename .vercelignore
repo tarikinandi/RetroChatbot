@@ -1,0 +1,15 @@
+tests/
+data/
+.venv/
+.claude/
+.superpowers/
+.idea/
+.pytest_cache/
+monitoring/
+docs/
+hello.py
+.env
+.env.*
+!.env.example
+requirements-dev.txt
+pytest.ini

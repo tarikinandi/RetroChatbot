@@ -130,5 +130,8 @@ def test_security_headers_present():
 def test_app_imports_without_key_in_demo(monkeypatch):
     import importlib
     import app.main as m
+    import dotenv
+    # never let a real local .env leak a key into the test process
+    monkeypatch.setattr(dotenv, "load_dotenv", lambda *a, **k: False)
     monkeypatch.delenv("GEMINI_API_KEY")
     importlib.reload(m)
