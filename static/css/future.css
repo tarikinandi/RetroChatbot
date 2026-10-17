@@ -65,6 +65,8 @@ body {
 }
 
 .era-toggle-button {
+  display: inline-block;
+  text-decoration: none;
   background: linear-gradient(90deg, #ff00c8, #00fff2);
   border: none;
   border-radius: 999px;

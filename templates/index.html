@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="/static/css/retro.css">
   {% endif %}
 </head>
-<body>
+<body data-era="{{ era }}" data-demo="{{ '1' if demo else '0' }}">
   <div class="page">
     {% if era == '2030' %}
       <div class="neon-frame">⚡ NÖRAL BAĞLANTI AKTİF ⚡ 2030 ZAMAN HATTI ⚡</div>
@@ -60,7 +60,11 @@
 
     <hr class="dashed">
 
+    {% if not demo %}
     <p class="counter-line">Ziyaretci sayisi: <span class="counter">{{ "%06d"|format(counter) }}</span></p>
+    {% else %}
+    <p class="counter-line">Herkese acik demo: sohbet tarayicinda tutulur, sunucuya kaydedilmez.</p>
+    {% endif %}
 
     {% if era == '2030' %}
       <p class="footer-note">Bu sayfa son olarak 2030'da senkronize edildi. webmaster@zamanmakinesi.chat</p>
