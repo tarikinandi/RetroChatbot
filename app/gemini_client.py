@@ -1,4 +1,5 @@
 import logging
+import re
 import time
 
 from google import genai
@@ -62,7 +63,7 @@ def _get_client() -> genai.Client:
 
 DEMO_DEADLINE_SECONDS = 8.0
 DEMO_MIN_ATTEMPT_SECONDS = 1.0
-COOLDOWN_UNUSABLE_SECONDS = 600.0  # 400/404: model name not accepted
+COOLDOWN_UNUSABLE_SECONDS = 600.0  # 404 / "not found": model name not accepted
 COOLDOWN_QUOTA_SECONDS = 60.0  # 429
 DISCOVERY_CACHE_SECONDS = 600.0
 DISCOVERY_MAX_MODELS = 2
@@ -85,26 +86,68 @@ def reset_model_state() -> None:
 
 
 def _build_contents(history: list[dict], user_message: str) -> list[dict]:
-    contents = [
-        {"role": msg["role"], "parts": [{"text": msg["text"]}]} for msg in history
-    ]
-    contents.append({"role": "user", "parts": [{"text": user_message}]})
-    return contents
+    """Strictly alternating user/model turns, first and last turn from the user.
+
+    The browser owns the history in demo mode, so it can start with a model turn
+    (after trimming) or hold two user turns in a row (a failed reply is never
+    stored). Gemini can reject both shapes with 400, so normalise here.
+    """
+    turns: list[tuple[str, str]] = []
+    for msg in history:
+        role, text = msg.get("role"), (msg.get("text") or "").strip()
+        if role not in ("user", "model") or not text:
+            continue
+        if not turns and role == "model":
+            continue
+        if turns and turns[-1][0] == role:
+            turns[-1] = (role, turns[-1][1] + " " + text)
+        else:
+            turns.append((role, text))
+    if turns and turns[-1][0] == "user":
+        turns[-1] = ("user", turns[-1][1] + " " + user_message)
+    else:
+        turns.append(("user", user_message))
+    return [{"role": r, "parts": [{"text": t}]} for r, t in turns]
+
+
+_KEY_LIKE = re.compile(r"AIza[0-9A-Za-z_\-]{10,}|[A-Za-z0-9_\-]{32,}")
+
+
+def redact(text: str, limit: int = 160) -> str:
+    """Safe-to-log excerpt: key-like tokens and the live key value removed."""
+    out = str(text or "")
+    try:
+        secret = get_settings().api_key
+    except Exception:
+        secret = ""
+    if secret and len(secret) >= 8:
+        out = out.replace(secret, "[REDACTED]")
+    out = _KEY_LIKE.sub("[REDACTED]", out)
+    out = " ".join(out.split())
+    return out[:limit]
+
+
+def _error_message(exc: Exception) -> str:
+    msg = getattr(exc, "message", None)
+    return str(msg if msg else exc)
 
 
 def _classify(exc: Exception) -> str:
-    """key | quota | unusable | timeout | transient. Reads, never logs, the message."""
+    """key | quota | request_invalid | unusable | timeout | transient."""
     code = getattr(exc, "code", None)
     status = str(getattr(exc, "status", "") or "").upper()
+    text = (_error_message(exc) + " " + str(exc)).lower()
     if code in (401, 403) or status in ("UNAUTHENTICATED", "PERMISSION_DENIED"):
         return "key"
-    if code == 400 or status == "INVALID_ARGUMENT":
-        text = str(exc).lower()
+    if code == 400 or status in ("INVALID_ARGUMENT", "FAILED_PRECONDITION"):
         if "api key" in text or "api_key" in text:
             return "key"
+        if "not found" in text or "not supported" in text:
+            return "unusable"
+        return "request_invalid"
     if code == 429 or status == "RESOURCE_EXHAUSTED":
         return "quota"
-    if code in (400, 404) or status in ("INVALID_ARGUMENT", "NOT_FOUND"):
+    if code == 404 or status == "NOT_FOUND":
         return "unusable"
     if isinstance(exc, TimeoutError) or "timeout" in type(exc).__name__.lower():
         return "timeout"
@@ -218,13 +261,15 @@ def _generate_reply_demo(history: list[dict], user_message: str, era: str) -> st
                 )
             except Exception as exc:
                 kind = _classify(exc)
-                # Class name and status code only: SDK text can echo request details.
                 logger.warning(
-                    "Gemini denemesi basarisiz: %s kod=%s tur=%s",
-                    type(exc).__name__, getattr(exc, "code", None), kind,
+                    "Gemini denemesi basarisiz: model=%s %s kod=%s status=%s tur=%s mesaj=%s",
+                    model, type(exc).__name__, getattr(exc, "code", None),
+                    getattr(exc, "status", None), kind, redact(_error_message(exc)),
                 )
                 if kind == "key":
                     raise GeminiRequestError("key", code="key_problem") from None
+                if kind == "request_invalid":
+                    raise GeminiRequestError("invalid", code="request_invalid") from None
                 kinds.append(kind)
                 _mark_failed(model, kind)
                 continue
